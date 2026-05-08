@@ -66,11 +66,40 @@ sleep "$BOOT_WAIT"
 # QEMU closes the socket on `quit`; on Windows that surfaces as a connection-abort
 # during read. Data prior to the abort still reaches us, so swallow the error.
 exec 3<>/dev/tcp/127.0.0.1/"$PORT"
-printf 'sendkey h\n'   >&3
+printf 'sendkey h\n'         >&3
 sleep 0.2
-printf 'sendkey i\n'   >&3
+printf 'sendkey i\n'         >&3
 sleep 0.2
-printf 'sendkey ret\n' >&3
+printf 'sendkey shift-a\n'   >&3
+sleep 0.2
+printf 'sendkey ret\n'       >&3
+sleep 0.3
+# M6b: type a sentinel, backspace, then commit. Without the destructive BS,
+# the 'q' would still be visible because nothing overwrites it.
+printf 'sendkey q\n'         >&3
+sleep 0.2
+printf 'sendkey backspace\n' >&3
+sleep 0.2
+printf 'sendkey ret\n'       >&3
+sleep 0.3
+# M6c: line buffer must clamp BS at empty so the prompt survives over-erase.
+# Type "hello", press BS 7 times (only 5 should take effect — the line
+# buffer ignores the rest), then type "world". With M6c the resulting line
+# is "> world"; without M6c the prompt would be eaten and "world" would
+# appear at column 0.
+for k in h e l l o; do
+    printf 'sendkey %s\n' "$k" >&3
+    sleep 0.1
+done
+for _ in 1 2 3 4 5 6 7; do
+    printf 'sendkey backspace\n' >&3
+    sleep 0.1
+done
+for k in w o r l d; do
+    printf 'sendkey %s\n' "$k" >&3
+    sleep 0.1
+done
+printf 'sendkey ret\n'       >&3
 sleep 0.5
 printf 'xp /4000bx 0xb8000\nquit\n' >&3
 output=$(cat <&3 2>/dev/null) || true
@@ -109,7 +138,9 @@ ok=true
 [[ "$chars" == *"TICK"* ]]   || { echo "[fail] missing 'TICK' (PIT IRQ0 didn't fire)" >&2; ok=false; }
 [[ "$chars" == *"KEY "* ]]   || { echo "[fail] missing 'KEY' (PS/2 IRQ1 didn't fire)" >&2; ok=false; }
 [[ "$chars" == *"> "* ]]     || { echo "[fail] missing prompt '> ' (shell didn't print via sys_write)" >&2; ok=false; }
-[[ "$chars" == *"hi"* ]]     || { echo "[fail] missing 'hi' (echo path through sys_read + sys_write broken)" >&2; ok=false; }
+[[ "$chars" == *"hiA"* ]]    || { echo "[fail] missing 'hiA' (echo path or shift translation broken)" >&2; ok=false; }
+[[ "$chars" != *"> q"* ]]    || { echo "[fail] backspace did not erase 'q' on VGA (M6b regression)" >&2; ok=false; }
+[[ "$chars" == *"> world"* ]] || { echo "[fail] missing '> world' (M6c line buffer let BS eat the prompt)" >&2; ok=false; }
 
 # Serial log captures the kernel's serial_puts output.
 serial_data=""
@@ -117,7 +148,7 @@ serial_data=""
 echo "Serial log: $(printf '%s' "$serial_data" | tr -d '\r')"
 [[ "$serial_data" == *"K OK"* ]] || { echo "[fail] missing 'K OK' in serial log (16550 UART driver broken)" >&2; ok=false; }
 [[ "$serial_data" == *"> "* ]]   || { echo "[fail] missing prompt '> ' in serial log (sys_write to fd 1 didn't reach serial)" >&2; ok=false; }
-[[ "$serial_data" == *"hi"* ]]   || { echo "[fail] missing 'hi' in serial log (echo path didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"hiA"* ]]  || { echo "[fail] missing 'hiA' in serial log (echo or shift translation didn't reach serial)" >&2; ok=false; }
 
 if $ok; then
     echo "[ok] shell echo confirmed — sys_read + sys_write round-trip in ring 3"

@@ -72,13 +72,19 @@ a place a forker would naturally want to extend.
 
 ## Input
 
-- **No shift / caps / control / alt.** The 128-byte scancode LUT covers
-  unshifted ASCII only. Adding shift state is a small extension —
-  track LShift/RShift make/break (scancodes `0x2A` / `0x36` / `0xAA` /
-  `0xB6`) and pick from a second LUT when shifted.
-- **No line editing.** Backspace just decrements the VGA cursor; the
-  glyph stays on screen. Enter has no buffer-flush semantics — every
-  keystroke is `sys_read`-ed and `sys_write`-d immediately.
+- **Shift and caps lock; no control or alt.** Shift state and caps lock
+  are tracked in the kernel and applied during scancode translation in
+  `sys_read`. Two parallel 128-byte LUTs (unshifted + shifted); caps
+  lock toggles letter case as a post-step. Ctrl and alt scancodes are
+  recognized as modifier make/break but produce no effect — there's no
+  consumer for them yet.
+- **Line buffer with destructive backspace; no in-line cursor movement.**
+  The shell maintains a 128-byte line buffer. Printable bytes echo per
+  keystroke. Backspace decrements the buffer and echoes `\b`; the
+  kernel's `vga_putc` overwrites the prior glyph with a space. Enter
+  commits the line and resets the buffer — the line processor itself
+  is a no-op stub for now. No left/right arrow movement, no kill-line,
+  no history.
 - **No keyboard repeat handling.** Hold-key behavior is whatever the
   PS/2 controller sends.
 
@@ -95,12 +101,10 @@ a place a forker would naturally want to extend.
 
 In rough order of payoff vs effort:
 
-1. **Shift / caps lock** in the scancode translator — tiny diff, big
-   ergonomic win.
-2. **Backspace that erases** (vga_putc emits `\b ` `\b` to clear).
-3. **A line buffer** in the shell, so the user can edit before
-   pressing Enter and the program reads whole lines.
-4. **A new syscall** (see [`adding-a-syscall.md`](adding-a-syscall.md)).
-5. **`sys_open` / `sys_close` and a proper fd table.**
-6. **A real frame allocator** so you can `mmap` pages.
-7. **A second user process** + a tiny scheduler.
+1. **A new syscall** (see [`adding-a-syscall.md`](adding-a-syscall.md)).
+2. **`sys_open` / `sys_close` and a proper fd table.**
+3. **A real frame allocator** so you can `mmap` pages.
+4. **A second user process** + a tiny scheduler.
+5. **Ctrl / alt modifiers** wired into the line shell (Ctrl+C to drop
+   the line, Ctrl+L to clear, etc.) — needs in-shell key handling, not
+   just translation.

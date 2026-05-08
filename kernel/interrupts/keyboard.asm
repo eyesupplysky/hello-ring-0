@@ -10,6 +10,8 @@ global handler_irq1
 global kbd_buffer
 global kbd_head
 global kbd_tail
+global kbd_shift_state
+global kbd_caps_lock
 
 extern pic_send_eoi
 extern pic_unmask_irq
@@ -26,6 +28,12 @@ kbd_head:   dq 0
 kbd_tail:   dq 0
 kbd_buffer: times 256 db 0
 msg_key:    db "KEY ", 0
+
+; Modifier state. Mutated only by sys_read's translation loop (single consumer)
+; — the IRQ handler does not touch these. State updates are sequenced through
+; the scancode ring buffer to preserve ordering.
+kbd_shift_state: db 0
+kbd_caps_lock:   db 0
 
 section .text
 

@@ -67,7 +67,8 @@ vga_scroll:
     ret
 
 ; Write one char at the cursor, advance, scroll on overflow. dil = char.
-; Handles LF (0x0A) as newline and BS (0x08) as backspace.
+; Handles LF (0x0A) as newline and BS (0x08) as destructive backspace
+; (cursor back, glyph at new position overwritten with space).
 vga_putc:
     cmp     dil, 10
     je      .newline
@@ -104,8 +105,17 @@ vga_putc:
 
 .backspace:
     cmp     qword [rel vga_cursor_col], 0
-    je      .done
+    je      .done                       ; clamp at col 0 — never unwind into prior row
     dec     qword [rel vga_cursor_col]
+    ; Erase glyph at the (now current) cursor position with a space + current attr.
+    mov     rax, [rel vga_cursor_row]
+    imul    rax, rax, VGA_COLS
+    add     rax, [rel vga_cursor_col]
+    shl     rax, 1
+    add     rax, VGA_BUFFER
+    mov     byte [rax], ' '
+    mov     dl, [rel vga_attr]
+    mov     [rax + 1], dl
     ret
 
 ; Print NUL-terminated string at cursor. rdi = str.

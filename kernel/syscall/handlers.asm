@@ -16,6 +16,8 @@ extern serial_putc
 extern kbd_buffer
 extern kbd_head
 extern kbd_tail
+extern kbd_shift_state
+extern kbd_caps_lock
 
 section .data
 
@@ -28,7 +30,9 @@ syscall_table_size: dq 3
 
 ; PS/2 Set 1 scancode -> ASCII (unshifted, no caps lock). Make codes only;
 ; break codes (high bit set) are filtered upstream in sys_read. Index by
-; scancode; 0 means "unmapped — drop and keep waiting".
+; scancode; 0 means "unmapped — drop and keep waiting". Modifier scancodes
+; (0x2A LShift, 0x36 RShift, 0x3A CapsLock) are also intercepted in sys_read
+; before this lookup, so their entries here are 0 (would-be unmapped anyway).
 align 8
 scancode_to_ascii:
     db 0                                                            ; 0x00
@@ -43,12 +47,33 @@ scancode_to_ascii:
     db 0, 0, 0, ' '                                                 ; 0x36 RShift, 0x37 *, 0x38 LAlt, 0x39 SPACE
     times 128 - ($ - scancode_to_ascii) db 0
 
+; Shifted variant. Same indexing as scancode_to_ascii — sys_read picks this
+; table when LShift or RShift is held. Letters are the uppercased glyph;
+; number row and punctuation use the US-QWERTY shifted symbol. Control bytes
+; (BS, TAB, Enter, ESC, SPACE) are unchanged.
+align 8
+scancode_to_ascii_shifted:
+    db 0                                                            ; 0x00
+    db 0x1B                                                         ; 0x01 ESC
+    db '!','@','#','$','%','^','&','*','(',')','_','+'              ; 0x02-0x0D
+    db 0x08, 0x09                                                   ; 0x0E BS, 0x0F TAB
+    db 'Q','W','E','R','T','Y','U','I','O','P','{','}'              ; 0x10-0x1B
+    db 0x0A, 0                                                      ; 0x1C Enter, 0x1D LCtrl
+    db 'A','S','D','F','G','H','J','K','L',':','"','~'              ; 0x1E-0x29
+    db 0, '|'                                                       ; 0x2A LShift, 0x2B '|'
+    db 'Z','X','C','V','B','N','M','<','>','?'                      ; 0x2C-0x35
+    db 0, 0, 0, ' '                                                 ; 0x36 RShift, 0x37 *, 0x38 LAlt, 0x39 SPACE
+    times 128 - ($ - scancode_to_ascii_shifted) db 0
+
 section .text
 
 ; sys_read(int fd, void *buf, size_t count)
 ; Currently always returns at most 1 byte. fd 0 (stdin) only; others -> -1.
 ; Blocks via cli/sti+hlt around the head/tail check until a printable scancode
-; is decoded.
+; is decoded. Modifier scancodes (0x2A/0x36 shift make, 0xAA/0xB6 shift break,
+; 0x3A caps lock toggle) are consumed silently and update kbd_shift_state /
+; kbd_caps_lock without producing output. Translation picks the shifted LUT
+; when either shift is held; caps lock then toggles letter case as a post-step.
 sys_read:
     cmp     rdi, 0
     jne     .bad
@@ -74,17 +99,65 @@ sys_read:
     mov     [rel kbd_tail], rcx
     sti
 
+    ; Modifier handling first — these include break codes (0xAA, 0xB6) that
+    ; would otherwise be filtered out by the high-bit check below.
+    cmp     al, 0x2A                ; LShift make
+    je      .lshift_down
+    cmp     al, 0x36                ; RShift make
+    je      .rshift_down
+    cmp     al, 0xAA                ; LShift break
+    je      .lshift_up
+    cmp     al, 0xB6                ; RShift break
+    je      .rshift_up
+    cmp     al, 0x3A                ; CapsLock make (toggle; break 0xBA ignored)
+    je      .caps_toggle
+
     test    al, 0x80                ; high bit = break code; drop and re-wait
     jnz     .wait
 
+    ; Pick LUT based on shift state.
+    test    byte [rel kbd_shift_state], 0x03
+    jz      .use_unshifted
+    lea     r8, [rel scancode_to_ascii_shifted]
+    jmp     .lookup
+.use_unshifted:
     lea     r8, [rel scancode_to_ascii]
+.lookup:
     movzx   rax, byte [r8 + rax]
     test    al, al                  ; unmapped scancode -> drop and re-wait
     jz      .wait
 
+    ; Caps lock toggles case for ASCII letters only. Range check via
+    ; AND 0xDF (clears case bit) then unsigned compare against 'A'..'Z'.
+    test    byte [rel kbd_caps_lock], 0x01
+    jz      .write
+    mov     dl, al
+    and     dl, 0xDF
+    sub     dl, 'A'
+    cmp     dl, 'Z' - 'A' + 1
+    jae     .write
+    xor     al, 0x20
+
+.write:
     mov     [rsi], al
     mov     rax, 1
     ret
+
+.lshift_down:
+    or      byte [rel kbd_shift_state], 0x01
+    jmp     .wait
+.rshift_down:
+    or      byte [rel kbd_shift_state], 0x02
+    jmp     .wait
+.lshift_up:
+    and     byte [rel kbd_shift_state], 0xFE
+    jmp     .wait
+.rshift_up:
+    and     byte [rel kbd_shift_state], 0xFD
+    jmp     .wait
+.caps_toggle:
+    xor     byte [rel kbd_caps_lock], 0x01
+    jmp     .wait
 
 .empty:
     xor     rax, rax
