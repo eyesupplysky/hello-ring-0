@@ -37,9 +37,3 @@ coverage/
 # Python
 __pycache__/
 
-# Claude
-.claude/logs/
-.claude/worktrees/
-
-# Publish workflow
-.publish-message

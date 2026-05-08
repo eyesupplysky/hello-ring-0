@@ -51,6 +51,7 @@ KERNEL_SRCS=(
     "kernel/syscall/init.asm"
     "kernel/syscall/entry.asm"
     "kernel/syscall/handlers.asm"
+    "kernel/syscall/fd.asm"
     "kernel/shell/main.asm"
 )
 

@@ -59,32 +59,42 @@ a place a forker would naturally want to extend.
 
 ## Syscall ABI
 
-- **`sys_read` returns 1 byte at a time.** Ignores `count > 1`. A
-  proper implementation would loop until count is satisfied or the
-  buffer's empty.
+- **`sys_read` returns 1 byte at a time on stdin.** `kbd_read` ignores
+  `count > 1`. `/dev/zero` respects count and fills the buffer;
+  `/dev/null` always returns 0 (EOF). No partial-read loop, no signal
+  handling.
 - **No errno.** Failures return –1 unconditionally; no way to
   distinguish "bad fd" from "buffer full."
 - **No buffer validation.** Pointers passed across the syscall boundary
   are dereferenced directly. A user pointer outside identity-mapped
   RAM faults. A real OS uses `copy_from_user` / `copy_to_user`.
-- **fds are positional, not allocated.** 0 = keyboard, 1/2 = VGA+serial,
-  no `open`, no descriptor table.
+- **Tiny fd table; two paths only.** The fd table has 16 slots,
+  pre-populated at boot with `0 = keyboard`, `1/2 = VGA+serial`.
+  `sys_open` recognizes exactly two paths — `/dev/null` and
+  `/dev/zero` — by direct `strcmp`. There's no inode, no filesystem,
+  no permission model, no `flags` interpretation. `sys_close` refuses
+  to free fd 0/1/2 so the shell can't accidentally brick its own I/O.
 
 ## Input
 
-- **Shift and caps lock; no control or alt.** Shift state and caps lock
-  are tracked in the kernel and applied during scancode translation in
-  `sys_read`. Two parallel 128-byte LUTs (unshifted + shifted); caps
-  lock toggles letter case as a post-step. Ctrl and alt scancodes are
-  recognized as modifier make/break but produce no effect — there's no
-  consumer for them yet.
-- **Line buffer with destructive backspace; no in-line cursor movement.**
-  The shell maintains a 128-byte line buffer. Printable bytes echo per
-  keystroke. Backspace decrements the buffer and echoes `\b`; the
-  kernel's `vga_putc` overwrites the prior glyph with a space. Enter
-  commits the line and resets the buffer — the line processor itself
-  is a no-op stub for now. No left/right arrow movement, no kill-line,
-  no history.
+- **Shift, caps lock, and ctrl/alt modifiers are tracked.** Shift state,
+  caps lock, ctrl, and alt are tracked in the kernel and applied during
+  scancode translation in `sys_read`. Two parallel 128-byte LUTs
+  (unshifted + shifted); caps lock toggles letter case as a post-step;
+  Ctrl+letter is folded to ASCII control codes (Ctrl+A=0x01,
+  Ctrl+C=0x03, …, Ctrl+Z=0x1A) via `& 0x1F` and supersedes caps lock.
+  Alt is tracked but produces no output — there's no consumer for it
+  yet. Right-side ctrl/alt work transparently (the 0xE0 prefix is
+  filtered as a stray break code; the suffix scancode matches the
+  left-side variant).
+- **Line buffer with destructive backspace, Ctrl+C aborts; no in-line
+  cursor movement.** The shell maintains a 128-byte line buffer.
+  Printable bytes echo per keystroke. Backspace decrements the buffer
+  and echoes `\b`; the kernel's `vga_putc` overwrites the prior glyph
+  with a space. Ctrl+C echoes `^C`, drops the in-flight line, and
+  re-emits the prompt. Enter commits the line and resets the buffer —
+  the line processor itself is a no-op stub for now. No left/right
+  arrow movement, no kill-line, no Ctrl+L clear-screen, no history.
 - **No keyboard repeat handling.** Hold-key behavior is whatever the
   PS/2 controller sends.
 
@@ -102,9 +112,10 @@ a place a forker would naturally want to extend.
 In rough order of payoff vs effort:
 
 1. **A new syscall** (see [`adding-a-syscall.md`](adding-a-syscall.md)).
-2. **`sys_open` / `sys_close` and a proper fd table.**
-3. **A real frame allocator** so you can `mmap` pages.
-4. **A second user process** + a tiny scheduler.
-5. **Ctrl / alt modifiers** wired into the line shell (Ctrl+C to drop
-   the line, Ctrl+L to clear, etc.) — needs in-shell key handling, not
-   just translation.
+2. **A real frame allocator** so you can `mmap` pages.
+3. **A second user process** + a tiny scheduler.
+4. **More devices in `/dev/`** — `/dev/random` (small LCG), a raw
+   `/dev/serial`, etc. Add a path branch in `sys_open` and wire up
+   read/write handlers.
+5. **Ctrl+L clear-screen** — needs either a `sys_clear` syscall or
+   ANSI escape parsing in `vga_putc`.

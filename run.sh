@@ -100,6 +100,13 @@ for k in w o r l d; do
     sleep 0.1
 done
 printf 'sendkey ret\n'       >&3
+sleep 0.3
+# M7b: type 'a', press Ctrl+C — shell should echo "^C", drop the line,
+# and re-emit the prompt. Without the Ctrl+C handler the line buffer
+# would still hold 'a' and no '^C' would appear.
+printf 'sendkey a\n'         >&3
+sleep 0.2
+printf 'sendkey ctrl-c\n'    >&3
 sleep 0.5
 printf 'xp /4000bx 0xb8000\nquit\n' >&3
 output=$(cat <&3 2>/dev/null) || true
@@ -141,6 +148,8 @@ ok=true
 [[ "$chars" == *"hiA"* ]]    || { echo "[fail] missing 'hiA' (echo path or shift translation broken)" >&2; ok=false; }
 [[ "$chars" != *"> q"* ]]    || { echo "[fail] backspace did not erase 'q' on VGA (M6b regression)" >&2; ok=false; }
 [[ "$chars" == *"> world"* ]] || { echo "[fail] missing '> world' (M6c line buffer let BS eat the prompt)" >&2; ok=false; }
+[[ "$chars" == *"a^C"* ]]    || { echo "[fail] missing 'a^C' (M7b Ctrl+C handler didn't fire)" >&2; ok=false; }
+[[ "$chars" == *"Z=00"* ]]   || { echo "[fail] missing 'Z=00' (M8 fd self-test didn't open/read /dev/zero)" >&2; ok=false; }
 
 # Serial log captures the kernel's serial_puts output.
 serial_data=""
@@ -149,6 +158,8 @@ echo "Serial log: $(printf '%s' "$serial_data" | tr -d '\r')"
 [[ "$serial_data" == *"K OK"* ]] || { echo "[fail] missing 'K OK' in serial log (16550 UART driver broken)" >&2; ok=false; }
 [[ "$serial_data" == *"> "* ]]   || { echo "[fail] missing prompt '> ' in serial log (sys_write to fd 1 didn't reach serial)" >&2; ok=false; }
 [[ "$serial_data" == *"hiA"* ]]  || { echo "[fail] missing 'hiA' in serial log (echo or shift translation didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"a^C"* ]]  || { echo "[fail] missing 'a^C' in serial log (M7b Ctrl+C didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"Z=00"* ]] || { echo "[fail] missing 'Z=00' in serial log (M8 fd self-test didn't reach serial)" >&2; ok=false; }
 
 if $ok; then
     echo "[ok] shell echo confirmed — sys_read + sys_write round-trip in ring 3"
