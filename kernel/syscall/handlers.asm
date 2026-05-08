@@ -4,8 +4,8 @@
 ;   2 = sys_exit
 ;   3 = sys_open    (in fd.asm)
 ;   4 = sys_close   (in fd.asm)
-;   5 = sys_mmap    (in mm/frame.asm)
-;   6 = sys_munmap  (in mm/frame.asm)
+;   5 = sys_mmap    (in mm/user_vm.asm — M11c real virt mapping)
+;   6 = sys_munmap  (in mm/user_vm.asm — M11c real virt unmapping)
 ;
 ; sys_read and sys_write are thin dispatchers: they validate fd, look up the
 ; per-fd function pointer in the fd table, shift the args (rdi=buf, rsi=count),

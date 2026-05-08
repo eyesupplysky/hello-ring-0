@@ -12,6 +12,7 @@
 %define PML4_ADDR           0x70000
 %define PDPT_ADDR           0x71000
 %define PD_ADDR             0x72000
+%define PT_ADDR             0x73000
 
 %define CODE32_SEL          0x08
 %define DATA_SEL            0x10
@@ -107,17 +108,30 @@ pm32_entry:
 
     jmp     CODE64_SEL:lm_entry
 
-; Zero PML4/PDPT/PD (12 KB), then identity-map the first 2 MB with a single
-; 2 MB page (PML4[0] -> PDPT[0] -> PD[0] with PS=1).
+; Zero PML4/PDPT/PD/PT (16 KB), then identity-map the first 2 MB at 4 KiB
+; granularity: PML4[0] -> PDPT[0] -> PD[0] -> PT[0..512], each PT entry
+; mapping a single 4 KiB page. M11a switched away from the original 2 MB
+; PS=1 leaf to give the kernel per-page granularity (vm_map_4k consumers).
 build_page_tables:
     mov     edi, PML4_ADDR
     xor     eax, eax
-    mov     ecx, 0x3000 / 4
+    mov     ecx, 0x4000 / 4
     rep     stosd
 
     mov     dword [PML4_ADDR], PDPT_ADDR | 0x07         ; U|RW|P
     mov     dword [PDPT_ADDR], PD_ADDR   | 0x07         ; U|RW|P
-    mov     dword [PD_ADDR],   0x000     | 0x87         ; U|PS|RW|P, base = 0
+    mov     dword [PD_ADDR],   PT_ADDR   | 0x07         ; U|RW|P (no PS — points at PT)
+
+    mov     edi, PT_ADDR
+    mov     eax, 0x000 | 0x07                           ; first PT entry: phys 0, U|RW|P
+    mov     ecx, 512
+.pt_fill:
+    mov     [edi], eax
+    mov     dword [edi + 4], 0
+    add     eax, 0x1000
+    add     edi, 8
+    dec     ecx
+    jnz     .pt_fill
     ret
 
 [BITS 64]

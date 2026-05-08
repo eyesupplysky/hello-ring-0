@@ -7,6 +7,7 @@
 global serial_init
 global serial_putc
 global serial_puts
+global serial_put_hex_qword
 
 %define COM1_BASE       0x3F8
 %define COM1_DATA       (COM1_BASE + 0)
@@ -84,5 +85,30 @@ serial_puts:
     inc     rbx
     jmp     .loop
 .done:
+    pop     rbx
+    ret
+
+; serial_put_hex_qword(rdi=value): print 16 uppercase hex chars (most-
+; significant nibble first) for the 64-bit value via COM1. Used by the
+; M11d #PF handler to dump CR2 / RIP / error code; generally useful for
+; any kernel debug output that must reach CI's serial log.
+serial_put_hex_qword:
+    push    rbx
+    push    r12
+    mov     rbx, rdi
+    mov     r12, 16
+.nibble:
+    rol     rbx, 4
+    mov     rdi, rbx
+    and     rdi, 0xF
+    cmp     rdi, 10
+    jb      .digit
+    add     rdi, 'A' - '0' - 10
+.digit:
+    add     rdi, '0'
+    call    serial_putc
+    dec     r12
+    jnz     .nibble
+    pop     r12
     pop     rbx
     ret

@@ -54,6 +54,10 @@ KERNEL_SRCS=(
     "kernel/syscall/fd.asm"
     "kernel/mm/frame.asm"
     "kernel/mm/kheap.asm"
+    "kernel/mm/vm.asm"
+    "kernel/mm/vm_space.asm"
+    "kernel/mm/user_vm.asm"
+    "kernel/mm/page_protect.asm"
     "kernel/shell/main.asm"
 )
 

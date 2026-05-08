@@ -17,6 +17,15 @@ extern init_fd
 extern init_frame
 extern init_kheap
 extern kheap_selftest
+extern init_vm
+extern vm_selftest
+extern init_vm_space
+extern vm_space_selftest
+extern init_user_vm
+extern um_selftest
+extern init_nx
+extern init_page_protect
+extern pp_selftest
 extern vga_init
 extern vga_puts_at
 extern serial_init
@@ -46,6 +55,15 @@ _start:
     call    init_frame
     call    init_kheap
     call    kheap_selftest
+    call    init_vm
+    call    vm_selftest
+    call    init_vm_space
+    call    vm_space_selftest
+    call    init_user_vm
+    call    um_selftest
+    call    init_nx
+    call    init_page_protect
+    call    pp_selftest
 
     lea     rdi, [rel msg_k_ok]
     mov     rsi, 14

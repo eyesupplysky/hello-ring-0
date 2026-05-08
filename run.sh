@@ -152,6 +152,10 @@ ok=true
 [[ "$chars" == *"Z=00"* ]]   || { echo "[fail] missing 'Z=00' (M8 fd self-test didn't open/read /dev/zero)" >&2; ok=false; }
 [[ "$chars" == *"M=AB"* ]]   || { echo "[fail] missing 'M=AB' (M9 mmap/munmap round-trip broken)" >&2; ok=false; }
 [[ "$chars" == *"KH OK"* ]]  || { echo "[fail] missing 'KH OK' (M10b kheap selftest failed)" >&2; ok=false; }
+[[ "$chars" == *"VM OK"* ]]  || { echo "[fail] missing 'VM OK' (M11a vm selftest failed: 4 KiB paging, vm_map_4k/vm_unmap_4k/vm_walk)" >&2; ok=false; }
+[[ "$chars" == *"VS OK"* ]]  || { echo "[fail] missing 'VS OK' (M11b vm_space selftest failed: vm_space_create/switch/destroy or CR3 swap)" >&2; ok=false; }
+[[ "$chars" == *"UM OK"* ]]  || { echo "[fail] missing 'UM OK' (M11c user_vm selftest failed: sys_mmap/sys_munmap real virt mapping)" >&2; ok=false; }
+[[ "$chars" == *"PP OK"* ]]  || { echo "[fail] missing 'PP OK' (M11d page protect selftest failed: EFER.NXE, vm_protect, kernel-text RO)" >&2; ok=false; }
 
 # Serial log captures the kernel's serial_puts output.
 serial_data=""
@@ -164,6 +168,10 @@ echo "Serial log: $(printf '%s' "$serial_data" | tr -d '\r')"
 [[ "$serial_data" == *"Z=00"* ]] || { echo "[fail] missing 'Z=00' in serial log (M8 fd self-test didn't reach serial)" >&2; ok=false; }
 [[ "$serial_data" == *"M=AB"* ]] || { echo "[fail] missing 'M=AB' in serial log (M9 mmap round-trip didn't reach serial)" >&2; ok=false; }
 [[ "$serial_data" == *"KH OK"* ]] || { echo "[fail] missing 'KH OK' in serial log (M10b kheap selftest didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"VM OK"* ]] || { echo "[fail] missing 'VM OK' in serial log (M11a vm selftest didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"VS OK"* ]] || { echo "[fail] missing 'VS OK' in serial log (M11b vm_space selftest didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"UM OK"* ]] || { echo "[fail] missing 'UM OK' in serial log (M11c user_vm selftest didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"PP OK"* ]] || { echo "[fail] missing 'PP OK' in serial log (M11d page protect selftest didn't reach serial)" >&2; ok=false; }
 
 if $ok; then
     echo "[ok] shell echo confirmed — sys_read + sys_write round-trip in ring 3"

@@ -1,12 +1,12 @@
-; 4 KiB physical-frame allocator covering the identity-mapped 0..2 MiB region.
-; Bitmap-based: 1 bit per frame, 512 frames total = 64 bytes of bookkeeping.
-; bit = 1 means "in use." First-fit linear scan; supports contiguous-N runs
-; via frame_alloc / frame_free (count=1 is the single-frame degenerate case).
+; 4 KiB physical-frame allocator covering phys 0..2 MiB. Bitmap-based: 1 bit
+; per frame, 512 frames total = 64 bytes of bookkeeping. bit = 1 means "in
+; use." First-fit linear scan; supports contiguous-N runs via frame_alloc /
+; frame_free (count=1 is the single-frame degenerate case).
 ;
-; The allocator is the *only* thing that hands out physical pages after init.
-; sys_mmap (M9b) is its sole consumer at the moment. Because everything is
-; identity-mapped, a returned physical address is also a valid virtual address
-; — there's no page-table editing, no separate VA space, no TLB flush.
+; The allocator is the only thing that hands out physical pages after init.
+; M11c consumers: vm_map_4k (intermediate page-table pages), vm_space_create
+; (per-space PML4), and user_vm.asm's sys_mmap (one frame per user page).
+; All callers go through frame_alloc — no other path mints physical frames.
 
 [BITS 64]
 
@@ -15,8 +15,6 @@ global frame_alloc
 global frames_alloc_n
 global frame_free
 global frames_free_n
-global sys_mmap
-global sys_munmap
 
 %define FRAME_SHIFT         12
 %define FRAME_SIZE          (1 << FRAME_SHIFT)
@@ -37,7 +35,7 @@ section .text
 ; Reserved physical ranges:
 ;   [0x00000, 0x10000)   — BIOS, IVT, low memory used by Stage 1 / Stage 2
 ;   [0x50000, 0x60000)   — region just below USER_STACK_TOP (0x60000)
-;   [0x70000, 0x73000)   — PML4, PDPT, PD page tables built in Stage 2
+;   [0x70000, 0x74000)   — PML4, PDPT, PD, PT page tables built in Stage 2 (M11a: PT added for 4 KiB granularity)
 ;   [0x80000, 0x90000)   — KERNEL_SYSCALL_STACK_TOP (0x88000) + KERNEL_STACK_TOP (0x90000) regions
 ;   [0xB8000, 0xC0000)   — VGA text buffer (4 KiB at 0xB8000, padded to 32 KiB)
 ;   [0x100000, 0x140000) — kernel image (16 KiB at 0x100000) + IDT (0x110000) + handler table (0x111000) + breathing room
@@ -51,7 +49,7 @@ init_frame:
     call    mark_range_used
 
     mov     rdi, 0x70
-    mov     rsi, 0x73
+    mov     rsi, 0x74
     call    mark_range_used
 
     mov     rdi, 0x80
@@ -209,32 +207,3 @@ bit_clear:
     pop     rbx
     ret
 
-; sys_mmap(count) -> rax: physical (= virtual) address of the first frame in
-; a `count`-frame contiguous run, or -1 if the bitmap can't satisfy the request.
-; This is an honest, scoped mmap: there's no separate virtual address space,
-; no protection flags, no MAP_FIXED — the kernel's identity map is the whole
-; story, so the returned phys address doubles as a usable virtual address.
-sys_mmap:
-    test    rdi, rdi
-    jz      .bad
-    call    frame_alloc
-    test    rax, rax
-    jz      .bad
-    ret
-.bad:
-    mov     rax, -1
-    ret
-
-; sys_munmap(addr, count) -> rax: 0 on success, -1 if addr is not page-aligned
-; or count is zero. Out-of-range frames are silently ignored by frame_free.
-sys_munmap:
-    test    rsi, rsi
-    jz      .bad
-    test    rdi, FRAME_SIZE - 1
-    jnz     .bad
-    call    frame_free
-    xor     rax, rax
-    ret
-.bad:
-    mov     rax, -1
-    ret

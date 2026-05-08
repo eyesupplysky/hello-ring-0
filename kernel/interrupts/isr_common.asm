@@ -11,6 +11,7 @@ global set_isr
 extern init_idt
 extern default_handler
 extern handler_div_by_zero
+extern handler_page_fault
 extern handler_irq0
 extern handler_irq1
 
@@ -91,6 +92,10 @@ init_interrupts:
     ; Register real handlers.
     mov     rdi, 0                              ; vector 0 = #DE
     lea     rsi, [rel handler_div_by_zero]
+    call    set_isr
+
+    mov     rdi, 14                             ; vector 14 = #PF (M11d)
+    lea     rsi, [rel handler_page_fault]
     call    set_isr
 
     mov     rdi, 0x20                           ; vector 0x20 = IRQ0 (PIT)
