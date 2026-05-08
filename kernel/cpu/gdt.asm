@@ -1,9 +1,15 @@
-; Kernel-resident GDT. Replaces stage 2's transient GDT — kernel code is now
-; at selector 0x08, kernel data at 0x10. IDT gates depend on this layout.
+; Kernel GDT. Five usable selectors plus a 16-byte TSS slot:
+;   0x00  null
+;   0x08  kernel code  (DPL=0, 64-bit)   <- STAR[47:32]
+;   0x10  kernel data  (DPL=0)
+;   0x18  user data    (DPL=3)            <- sysretq SS = STAR[63:48] + 8
+;   0x20  user code    (DPL=3, 64-bit)    <- sysretq CS = STAR[63:48] + 16
+;   0x28  TSS (16 bytes — long-mode system descriptor spans 2 GDT entries)
 
 [BITS 64]
 
 global init_gdt
+global gdt_tss_descriptor
 
 %define KCODE_SEL   0x08
 %define KDATA_SEL   0x10
@@ -13,12 +19,20 @@ section .data
 align 8
 gdt_start:
     dq 0                                                ; null
-    ; 64-bit code: P=1, DPL=0, S=1, type=1010, L=1, D=0
+    ; Kernel code: P, DPL=0, S, type=code/R/non-conf, L=1, D=0
     dw 0xFFFF, 0x0000
     db 0x00, 10011010b, 10101111b, 0x00
-    ; data: P=1, DPL=0, S=1, type=0010
+    ; Kernel data: P, DPL=0, S, type=data/W
     dw 0xFFFF, 0x0000
     db 0x00, 10010010b, 11001111b, 0x00
+    ; User data: P, DPL=3, S, type=data/W
+    dw 0xFFFF, 0x0000
+    db 0x00, 11110010b, 11001111b, 0x00
+    ; User code: P, DPL=3, S, type=code/R/non-conf, L=1, D=0
+    dw 0xFFFF, 0x0000
+    db 0x00, 11111010b, 10101111b, 0x00
+gdt_tss_descriptor:
+    times 16 db 0                                       ; patched at runtime by init_tss
 gdt_end:
 
 gdt_descriptor:
@@ -39,7 +53,6 @@ init_gdt:
     mov     gs, ax
     mov     ss, ax
 
-    ; Far return to reload CS with KCODE_SEL.
     push    qword KCODE_SEL
     lea     rax, [rel .reload_cs]
     push    rax

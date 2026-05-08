@@ -64,7 +64,11 @@ sleep 4
 # QEMU closes the socket on `quit`; on Windows that surfaces as a connection-abort
 # during read. Data prior to the abort still reaches us, so swallow the error.
 exec 3<>/dev/tcp/127.0.0.1/"$PORT"
-printf 'sendkey a\n' >&3
+printf 'sendkey h\n'   >&3
+sleep 0.2
+printf 'sendkey i\n'   >&3
+sleep 0.2
+printf 'sendkey ret\n' >&3
 sleep 0.5
 printf 'xp /4000bx 0xb8000\nquit\n' >&3
 output=$(cat <&3 2>/dev/null) || true
@@ -91,17 +95,21 @@ ok=true
 [[ "$chars" == *"S1 OK"* ]] || { echo "[fail] missing 'S1 OK' (Stage 1 didn't run)" >&2; ok=false; }
 [[ "$chars" == *"S2 OK"* ]] || { echo "[fail] missing 'S2 OK' (Stage 2 didn't run)" >&2; ok=false; }
 [[ "$chars" == *"K OK"* ]]  || { echo "[fail] missing 'K OK' (kernel didn't reach long mode)" >&2; ok=false; }
-[[ "$chars" == *"TICK"* ]]  || { echo "[fail] missing 'TICK' (PIT IRQ0 didn't fire)" >&2; ok=false; }
-[[ "$chars" == *"KEY "* ]]  || { echo "[fail] missing 'KEY' (PS/2 IRQ1 didn't fire)" >&2; ok=false; }
+[[ "$chars" == *"TICK"* ]]   || { echo "[fail] missing 'TICK' (PIT IRQ0 didn't fire)" >&2; ok=false; }
+[[ "$chars" == *"KEY "* ]]   || { echo "[fail] missing 'KEY' (PS/2 IRQ1 didn't fire)" >&2; ok=false; }
+[[ "$chars" == *"> "* ]]     || { echo "[fail] missing prompt '> ' (shell didn't print via sys_write)" >&2; ok=false; }
+[[ "$chars" == *"hi"* ]]     || { echo "[fail] missing 'hi' (echo path through sys_read + sys_write broken)" >&2; ok=false; }
 
 # Serial log captures the kernel's serial_puts output.
 serial_data=""
 [ -f "$SERIAL_LOG" ] && serial_data=$(cat "$SERIAL_LOG")
 echo "Serial log: $(printf '%s' "$serial_data" | tr -d '\r')"
 [[ "$serial_data" == *"K OK"* ]] || { echo "[fail] missing 'K OK' in serial log (16550 UART driver broken)" >&2; ok=false; }
+[[ "$serial_data" == *"> "* ]]   || { echo "[fail] missing prompt '> ' in serial log (sys_write to fd 1 didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"hi"* ]]   || { echo "[fail] missing 'hi' in serial log (echo path didn't reach serial)" >&2; ok=false; }
 
 if $ok; then
-    echo "[ok] S1 OK + S2 OK + K OK + TICK + KEY (VGA) + K OK (serial) — drivers confirmed"
+    echo "[ok] shell echo confirmed — sys_read + sys_write round-trip in ring 3"
     exit 0
 fi
 

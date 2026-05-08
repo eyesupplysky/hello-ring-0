@@ -47,6 +47,11 @@ KERNEL_SRCS=(
     "kernel/interrupts/keyboard.asm"
     "kernel/drivers/vga.asm"
     "kernel/drivers/serial.asm"
+    "kernel/cpu/tss.asm"
+    "kernel/syscall/init.asm"
+    "kernel/syscall/entry.asm"
+    "kernel/syscall/handlers.asm"
+    "kernel/shell/main.asm"
 )
 
 KERNEL_OBJS=()
@@ -64,15 +69,15 @@ echo "[link] kernel.bin via kernel.ld"
     -T "$ROOT/kernel/kernel.ld" \
     -o "$BUILD/kernel.bin" \
     "${KERNEL_OBJS[@]}"
-assert_size_le "$BUILD/kernel.bin" 8192
+assert_size_le "$BUILD/kernel.bin" 16384
 
-echo "[pad] kernel.bin -> kernel.padded (8 KB)"
+echo "[pad] kernel.bin -> kernel.padded (16 KB)"
 cp "$BUILD/kernel.bin" "$BUILD/kernel.padded"
-truncate -s 8192 "$BUILD/kernel.padded"
-assert_size_eq "$BUILD/kernel.padded" 8192
+truncate -s 16384 "$BUILD/kernel.padded"
+assert_size_eq "$BUILD/kernel.padded" 16384
 
 echo "[compose] disk.img"
 cat "$BUILD/stage1.bin" "$BUILD/stage2.bin" "$BUILD/kernel.padded" > "$BUILD/disk.img"
-assert_size_eq "$BUILD/disk.img" $((512 + 4096 + 8192))
+assert_size_eq "$BUILD/disk.img" $((512 + 4096 + 16384))
 
-echo "[ok] disk.img = $(wc -c < "$BUILD/disk.img") bytes (25 sectors)"
+echo "[ok] disk.img = $(wc -c < "$BUILD/disk.img") bytes (41 sectors)"

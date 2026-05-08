@@ -6,7 +6,7 @@
 
 %define STAGE2_LOAD_SEG     0x0000
 %define STAGE2_LOAD_OFF     0x7E00
-%define POST_STAGE1_SECTORS 24          ; Stage 2 (8) + kernel (16); SeaBIOS handles cross-track
+%define POST_STAGE1_SECTORS 40          ; Stage 2 (8) + kernel (32); SeaBIOS handles cross-track
 %define MAX_DISK_RETRIES    3
 
 ; Entry point — BIOS jumps here after loading the sector from disk.

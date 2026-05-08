@@ -7,7 +7,7 @@
 %define STAGE2_STACK_TOP    0x7C00
 %define KERNEL_LOAD_SRC     0x8E00          ; where Stage 1 placed the kernel image
 %define KERNEL_DEST         0x100000        ; 1 MB
-%define KERNEL_COPY_BYTES   0x2000          ; 16 sectors = 8 KB max
+%define KERNEL_COPY_BYTES   0x4000          ; 32 sectors = 16 KB max
 
 %define PML4_ADDR           0x70000
 %define PDPT_ADDR           0x71000
@@ -115,9 +115,9 @@ build_page_tables:
     mov     ecx, 0x3000 / 4
     rep     stosd
 
-    mov     dword [PML4_ADDR], PDPT_ADDR | 0x3
-    mov     dword [PDPT_ADDR], PD_ADDR   | 0x3
-    mov     dword [PD_ADDR],   0x000     | 0x83        ; PS|RW|P, base = 0
+    mov     dword [PML4_ADDR], PDPT_ADDR | 0x07         ; U|RW|P
+    mov     dword [PDPT_ADDR], PD_ADDR   | 0x07         ; U|RW|P
+    mov     dword [PD_ADDR],   0x000     | 0x87         ; U|PS|RW|P, base = 0
     ret
 
 [BITS 64]

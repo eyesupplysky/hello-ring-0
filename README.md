@@ -6,7 +6,7 @@ The first of four portfolio projects.
 
 ## Status
 
-Boots to long mode and runs interrupt-driven on PIT timer and PS/2 keyboard. VGA text and serial output go through real drivers. Halts in an idle loop awaiting future shell work.
+Boots to long mode, drops into a ring-3 line-echo shell that talks to the kernel through `syscall`.
 
 What works:
 
@@ -15,9 +15,12 @@ What works:
 - **Kernel.**
   - Loads its own GDT and a 256-entry IDT with macro-generated ISR stubs and a common dispatcher.
   - 8259 PIC remap, PIT @ ~100 Hz, PS/2 keyboard with a 256-byte scancode ring buffer.
-  - VGA text driver (cursor-based output and absolute-position helpers, with scroll) and 16550 UART polling driver for serial output.
+  - VGA text driver (cursor + absolute-position helpers, with scroll) and 16550 UART polling driver.
+  - TSS for ring transitions; user CS/data selectors in the GDT.
+  - Syscall ABI (`syscall`/`sysretq`): `sys_read`, `sys_write`, `sys_exit`.
+- **Shell.** Ring-3 line-echo loop. Only kernel contact is via `syscall`.
 
-What's coming: a small syscall ABI, a line-echo shell on top.
+What's coming: CI, docs, polish.
 
 ## Build and run
 
@@ -39,9 +42,11 @@ qemu-system-x86_64 -fda build/disk.img
 ```
 boot/        Stage 1 + Stage 2 (real → protected → long mode)
 kernel/
-  cpu/        GDT, IDT
+  cpu/        GDT, IDT, TSS
   interrupts/ ISR dispatcher, PIC, timer, keyboard
   drivers/    VGA text, 16550 UART
+  syscall/    MSR setup, syscall entry, sys_read/sys_write/sys_exit
+  shell/      ring-3 line-echo shell
 build.sh     assemble + link + compose disk.img
 run.sh       boot disk.img and verify VGA + serial output
 ```
