@@ -16,9 +16,23 @@ a place a forker would naturally want to extend.
   in and out at the syscall boundary.
 - **No NX bit.** `EFER.NXE` is left clear, so every page is executable.
   Real systems set it and mark `.data` / `.bss` no-execute.
-- **No memory allocator.** Everything that needs RAM gets a hardcoded
-  physical address baked into the source. See [memory-map.md](memory-map.md).
-- **No userland heap.** The shell uses static `.data` only.
+- **Bitmap frame allocator over the identity-mapped 2 MB.** 1 bit per
+  4 KiB frame, 64 bytes total. `init_frame` reserves the regions
+  occupied by BIOS, the user/kernel/syscall stacks, the page tables
+  built in Stage 2, the VGA text buffer, and the kernel image. The
+  rest is free. First-fit linear scan; supports contiguous-N
+  allocation. See [memory-map.md](memory-map.md) for the address-by-
+  address breakdown.
+- **`sys_mmap` returns physical addresses, not virtual.** Because the
+  whole kernel + user space lives in one 2 MB identity map, the
+  physical address handed out by `frame_alloc` *is* a usable virtual
+  address — the `mmap` syscall just allocates frames and returns the
+  start address. No `MAP_FIXED`, no `PROT_*` flags, no separate VA
+  space, no TLB invalidation. A real `mmap` would edit page tables;
+  this one doesn't.
+- **No userland heap.** The shell still uses static `.data` for its
+  own state. `mmap` is available but the shell doesn't use it for a
+  heap yet.
 
 ## Concurrency model
 
@@ -112,8 +126,10 @@ a place a forker would naturally want to extend.
 In rough order of payoff vs effort:
 
 1. **A new syscall** (see [`adding-a-syscall.md`](adding-a-syscall.md)).
-2. **A real frame allocator** so you can `mmap` pages.
-3. **A second user process** + a tiny scheduler.
+2. **A second user process** + a tiny scheduler.
+3. **Real virtual memory.** Split the 2 MB huge page into 4 KiB pages,
+   give `sys_mmap` a `MAP_FIXED` semantics, and edit the page tables
+   on each map/unmap. Adds `invlpg` for TLB invalidation.
 4. **More devices in `/dev/`** — `/dev/random` (small LCG), a raw
    `/dev/serial`, etc. Add a path branch in `sys_open` and wire up
    read/write handlers.

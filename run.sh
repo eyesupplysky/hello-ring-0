@@ -150,6 +150,7 @@ ok=true
 [[ "$chars" == *"> world"* ]] || { echo "[fail] missing '> world' (M6c line buffer let BS eat the prompt)" >&2; ok=false; }
 [[ "$chars" == *"a^C"* ]]    || { echo "[fail] missing 'a^C' (M7b Ctrl+C handler didn't fire)" >&2; ok=false; }
 [[ "$chars" == *"Z=00"* ]]   || { echo "[fail] missing 'Z=00' (M8 fd self-test didn't open/read /dev/zero)" >&2; ok=false; }
+[[ "$chars" == *"M=AB"* ]]   || { echo "[fail] missing 'M=AB' (M9 mmap/munmap round-trip broken)" >&2; ok=false; }
 
 # Serial log captures the kernel's serial_puts output.
 serial_data=""
@@ -160,6 +161,7 @@ echo "Serial log: $(printf '%s' "$serial_data" | tr -d '\r')"
 [[ "$serial_data" == *"hiA"* ]]  || { echo "[fail] missing 'hiA' in serial log (echo or shift translation didn't reach serial)" >&2; ok=false; }
 [[ "$serial_data" == *"a^C"* ]]  || { echo "[fail] missing 'a^C' in serial log (M7b Ctrl+C didn't reach serial)" >&2; ok=false; }
 [[ "$serial_data" == *"Z=00"* ]] || { echo "[fail] missing 'Z=00' in serial log (M8 fd self-test didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"M=AB"* ]] || { echo "[fail] missing 'M=AB' in serial log (M9 mmap round-trip didn't reach serial)" >&2; ok=false; }
 
 if $ok; then
     echo "[ok] shell echo confirmed — sys_read + sys_write round-trip in ring 3"

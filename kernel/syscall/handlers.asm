@@ -4,6 +4,8 @@
 ;   2 = sys_exit
 ;   3 = sys_open    (in fd.asm)
 ;   4 = sys_close   (in fd.asm)
+;   5 = sys_mmap    (in mm/frame.asm)
+;   6 = sys_munmap  (in mm/frame.asm)
 ;
 ; sys_read and sys_write are thin dispatchers: they validate fd, look up the
 ; per-fd function pointer in the fd table, shift the args (rdi=buf, rsi=count),
@@ -33,6 +35,8 @@ extern fd_write_fns
 extern fd_in_use
 extern sys_open
 extern sys_close
+extern sys_mmap
+extern sys_munmap
 
 ; Must match the table size in fd.asm. Kept as a literal here because NASM
 ; %define symbols don't cross object-file boundaries.
@@ -46,8 +50,10 @@ syscall_table:
     dq sys_exit                     ; 2
     dq sys_open                     ; 3
     dq sys_close                    ; 4
+    dq sys_mmap                     ; 5
+    dq sys_munmap                   ; 6
 
-syscall_table_size: dq 5
+syscall_table_size: dq 7
 
 ; PS/2 Set 1 scancode -> ASCII (unshifted, no caps lock). Make codes only;
 ; break codes (high bit set) are filtered upstream in sys_read. Index by

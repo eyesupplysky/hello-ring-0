@@ -14,6 +14,8 @@ global shell_main
 %define SYS_EXIT        2
 %define SYS_OPEN        3
 %define SYS_CLOSE       4
+%define SYS_MMAP        5
+%define SYS_MUNMAP      6
 %define FD_STDIN        0
 %define FD_STDOUT       1
 %define LINE_BUF_SIZE   128
@@ -25,6 +27,7 @@ section .text
 ; parsing) hook in there.
 shell_main:
     call    fd_selftest
+    call    mm_selftest
     lea     rdi, [rel prompt]
     mov     rsi, prompt_len
     call    write_str
@@ -132,6 +135,38 @@ fd_selftest:
 .done:
     ret
 
+; mm_selftest: sys_mmap(1), write 0xAB to the returned page, read it back,
+; print "M=AB\n", sys_munmap. Demonstrates that the bitmap allocator and the
+; mmap/munmap syscalls round-trip correctly with real memory access.
+mm_selftest:
+    mov     rax, SYS_MMAP
+    mov     rdi, 1
+    syscall
+    test    rax, rax
+    js      .done                   ; -1 → bail silently (CI catches missing string)
+    mov     [rel mm_addr], rax
+
+    mov     rdi, [rel mm_addr]
+    mov     byte [rdi], 0xAB
+    movzx   rax, byte [rdi]
+    mov     [rel mm_byte], al
+
+    lea     rdi, [rel mm_prefix]
+    mov     rsi, 2
+    call    write_str
+    movzx   rdi, byte [rel mm_byte]
+    call    write_hex_byte
+    lea     rdi, [rel st_newline]
+    mov     rsi, 1
+    call    write_str
+
+    mov     rax, SYS_MUNMAP
+    mov     rdi, [rel mm_addr]
+    mov     rsi, 1
+    syscall
+.done:
+    ret
+
 ; write_hex_byte(rdi=byte): writes 2 ASCII hex chars via sys_write to stdout.
 write_hex_byte:
     push    rbx
@@ -181,3 +216,7 @@ st_newline:  db 0x0A
 st_fd:       dq 0
 st_byte:     db 0
 st_hex:      db 0, 0
+
+mm_prefix:   db "M="
+mm_addr:     dq 0
+mm_byte:     db 0
