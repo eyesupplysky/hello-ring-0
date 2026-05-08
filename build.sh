@@ -53,6 +53,7 @@ KERNEL_SRCS=(
     "kernel/syscall/handlers.asm"
     "kernel/syscall/fd.asm"
     "kernel/mm/frame.asm"
+    "kernel/mm/kheap.asm"
     "kernel/shell/main.asm"
 )
 

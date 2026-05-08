@@ -28,7 +28,8 @@ is enforced by CPL on instructions, not by page protection.
 | `0x100000`–`0x103FFF` | up to 16 KB | Kernel `.text` + `.rodata` + `.data` (linked at this base, executed in place) |
 | `0x110000`–`0x110FFF` | 4 KB | IDT (256 × 16-byte gate descriptors) |
 | `0x111000`–`0x1117FF` | 2 KB | Handler table (256 × 8-byte function pointers, used by `isr_common` dispatch) |
-| `0x111800`–`0x1FFFFF` | rest of 2 MB | unused |
+| `0x111800`–`0x13FFFF` | up to 178 KB | Reserved breathing room — `init_frame` reserves the full `[0x100000, 0x140000)` block alongside the kernel image, IDT, and handler table. Not handed out by `frames_alloc_n`. |
+| `0x140000`–`0x1FFFFF` | up to 768 KB | **Frame pool** — `frames_alloc_n` hands these out first-fit low-to-high to `sys_mmap` and to the kernel heap (`kmalloc` slab pages and large allocations). Empty kheap slabs are returned to the pool immediately. |
 | `0x200000` and beyond | — | not mapped — accesses fault |
 
 ## Stack sizing

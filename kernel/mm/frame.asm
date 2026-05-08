@@ -12,7 +12,9 @@
 
 global init_frame
 global frame_alloc
+global frames_alloc_n
 global frame_free
+global frames_free_n
 global sys_mmap
 global sys_munmap
 
@@ -68,13 +70,19 @@ init_frame:
 
 ; frame_alloc(count) -> rax: physical address of the first frame in a run
 ; of `count` contiguous free frames, or 0 if no such run exists.
+; frames_alloc_n is the same function under the name kheap.asm uses, so a
+; reader of the heap call sites doesn't have to remember that frame_alloc
+; took a count all along.
 frame_alloc:
+frames_alloc_n:
     push    rbx
     push    r12
     push    r13
     push    r14
     test    rdi, rdi
     jz      .none
+    cmp     rdi, FRAME_TOTAL
+    ja      .none
     mov     r12, rdi                ; needed count
     xor     rbx, rbx                ; current frame idx
     xor     r13, r13                ; run length
@@ -120,7 +128,9 @@ frame_alloc:
 ; frame_free(phys_addr, count): clear bits for `count` frames starting at addr.
 ; Out-of-range frame indices are silently skipped — not the allocator's job
 ; to detect mistaken frees.
+; frames_free_n is the same function under the name kheap.asm uses.
 frame_free:
+frames_free_n:
     push    rbx
     push    r12
     shr     rdi, FRAME_SHIFT

@@ -15,6 +15,8 @@ extern init_kbd
 extern init_syscall
 extern init_fd
 extern init_frame
+extern init_kheap
+extern kheap_selftest
 extern vga_init
 extern vga_puts_at
 extern serial_init
@@ -42,6 +44,8 @@ _start:
     call    init_syscall
     call    init_fd
     call    init_frame
+    call    init_kheap
+    call    kheap_selftest
 
     lea     rdi, [rel msg_k_ok]
     mov     rsi, 14
