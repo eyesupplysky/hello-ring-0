@@ -7,7 +7,7 @@
 %define STAGE2_STACK_TOP    0x7C00
 %define KERNEL_LOAD_SRC     0x8E00          ; where Stage 1 placed the kernel image
 %define KERNEL_DEST         0x100000        ; 1 MB
-%define KERNEL_COPY_BYTES   0x1000          ; 8 sectors = 4 KB max for M2
+%define KERNEL_COPY_BYTES   0x2000          ; 16 sectors = 8 KB max
 
 %define PML4_ADDR           0x70000
 %define PDPT_ADDR           0x71000

@@ -35,25 +35,44 @@ echo "[asm] boot/stage2.asm -> build/stage2.bin"
 "$NASM" -f bin -o "$BUILD/stage2.bin" "$ROOT/boot/stage2.asm"
 assert_size_eq "$BUILD/stage2.bin" 4096
 
-echo "[asm] kernel/main.asm -> build/kernel.o"
-"$NASM" -f elf64 -o "$BUILD/kernel.o" "$ROOT/kernel/main.asm"
+KERNEL_SRCS=(
+    "kernel/main.asm"
+    "kernel/cpu/gdt.asm"
+    "kernel/cpu/idt.asm"
+    "kernel/interrupts/isr_stubs.asm"
+    "kernel/interrupts/isr_common.asm"
+    "kernel/interrupts/handlers.asm"
+    "kernel/interrupts/pic.asm"
+    "kernel/interrupts/timer.asm"
+    "kernel/interrupts/keyboard.asm"
+    "kernel/drivers/vga.asm"
+    "kernel/drivers/serial.asm"
+)
 
-echo "[link] kernel.o -> build/kernel.bin"
+KERNEL_OBJS=()
+for src in "${KERNEL_SRCS[@]}"; do
+    obj="$BUILD/${src%.asm}.o"
+    mkdir -p "$(dirname "$obj")"
+    echo "[asm] $src -> ${obj#$ROOT/}"
+    "$NASM" -f elf64 -o "$obj" "$ROOT/$src"
+    KERNEL_OBJS+=("$obj")
+done
+
+echo "[link] kernel.bin via kernel.ld"
 "$LLD" -m elf_x86_64 -nostdlib -static \
     --oformat=binary \
-    --image-base=0x100000 \
-    -Ttext=0x100000 \
+    -T "$ROOT/kernel/kernel.ld" \
     -o "$BUILD/kernel.bin" \
-    "$BUILD/kernel.o"
-assert_size_le "$BUILD/kernel.bin" 4096
+    "${KERNEL_OBJS[@]}"
+assert_size_le "$BUILD/kernel.bin" 8192
 
-echo "[pad] kernel.bin -> kernel.padded (4 KB)"
+echo "[pad] kernel.bin -> kernel.padded (8 KB)"
 cp "$BUILD/kernel.bin" "$BUILD/kernel.padded"
-truncate -s 4096 "$BUILD/kernel.padded"
-assert_size_eq "$BUILD/kernel.padded" 4096
+truncate -s 8192 "$BUILD/kernel.padded"
+assert_size_eq "$BUILD/kernel.padded" 8192
 
 echo "[compose] disk.img"
 cat "$BUILD/stage1.bin" "$BUILD/stage2.bin" "$BUILD/kernel.padded" > "$BUILD/disk.img"
-assert_size_eq "$BUILD/disk.img" 8704
+assert_size_eq "$BUILD/disk.img" $((512 + 4096 + 8192))
 
-echo "[ok] disk.img = 8704 bytes (17 sectors)"
+echo "[ok] disk.img = $(wc -c < "$BUILD/disk.img") bytes (25 sectors)"

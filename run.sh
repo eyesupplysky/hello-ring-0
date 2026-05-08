@@ -28,9 +28,21 @@ cleanup() {
 trap cleanup EXIT
 
 # QEMU runs with TCP-based monitor (Windows piped-stdio to monitor doesn't drain reliably).
+SERIAL_LOG="$ROOT/build/serial.log"
+rm -f "$SERIAL_LOG"
+
+# QEMU on Windows expects native paths for -serial file:; cygpath converts
+# MSYS-style /d/... into D:\... which the Windows binary can open.
+if command -v cygpath >/dev/null 2>&1; then
+    SERIAL_LOG_NATIVE=$(cygpath -w "$SERIAL_LOG")
+else
+    SERIAL_LOG_NATIVE="$SERIAL_LOG"
+fi
+
 "$QEMU" -fda "$IMG" \
     -display none \
     -monitor "tcp:127.0.0.1:$PORT,server,nowait" \
+    -serial "file:$SERIAL_LOG_NATIVE" \
     -no-reboot \
     > "$LOG" 2>&1 &
 QEMU_PID=$!
@@ -52,6 +64,8 @@ sleep 4
 # QEMU closes the socket on `quit`; on Windows that surfaces as a connection-abort
 # during read. Data prior to the abort still reaches us, so swallow the error.
 exec 3<>/dev/tcp/127.0.0.1/"$PORT"
+printf 'sendkey a\n' >&3
+sleep 0.5
 printf 'xp /4000bx 0xb8000\nquit\n' >&3
 output=$(cat <&3 2>/dev/null) || true
 exec 3<&- 2>/dev/null || true
@@ -77,9 +91,17 @@ ok=true
 [[ "$chars" == *"S1 OK"* ]] || { echo "[fail] missing 'S1 OK' (Stage 1 didn't run)" >&2; ok=false; }
 [[ "$chars" == *"S2 OK"* ]] || { echo "[fail] missing 'S2 OK' (Stage 2 didn't run)" >&2; ok=false; }
 [[ "$chars" == *"K OK"* ]]  || { echo "[fail] missing 'K OK' (kernel didn't reach long mode)" >&2; ok=false; }
+[[ "$chars" == *"TICK"* ]]  || { echo "[fail] missing 'TICK' (PIT IRQ0 didn't fire)" >&2; ok=false; }
+[[ "$chars" == *"KEY "* ]]  || { echo "[fail] missing 'KEY' (PS/2 IRQ1 didn't fire)" >&2; ok=false; }
+
+# Serial log captures the kernel's serial_puts output.
+serial_data=""
+[ -f "$SERIAL_LOG" ] && serial_data=$(cat "$SERIAL_LOG")
+echo "Serial log: $(printf '%s' "$serial_data" | tr -d '\r')"
+[[ "$serial_data" == *"K OK"* ]] || { echo "[fail] missing 'K OK' in serial log (16550 UART driver broken)" >&2; ok=false; }
 
 if $ok; then
-    echo "[ok] S1 OK + S2 OK + K OK all reached"
+    echo "[ok] S1 OK + S2 OK + K OK + TICK + KEY (VGA) + K OK (serial) — drivers confirmed"
     exit 0
 fi
 
