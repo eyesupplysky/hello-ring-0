@@ -4,6 +4,12 @@
 ; glyph erase) but is suppressed when the buffer is empty so it can't damage
 ; the prompt; Ctrl+C drops the in-flight line and emits "^C" + a fresh prompt;
 ; LF commits the line, resets the buffer, and re-emits the prompt.
+;
+; Lives in .user_text / .user_data — sections kernel.ld places past the
+; kernel image's W^X-stamped range. M11d's init_page_protect stamps these
+; pages with US=1 so ring 3 can fetch shell code and read/write shell data;
+; without that, the iretq into shell_main would #PF on the first instruction
+; fetch from a US=0 .text page.
 
 [BITS 64]
 
@@ -20,7 +26,7 @@ global shell_main
 %define FD_STDOUT       1
 %define LINE_BUF_SIZE   128
 
-section .text
+section .user_text
 
 ; Ring-3 entry. Prints initial prompt, then enters the cooked-mode line loop.
 ; process_line is a no-op stub on commit — future milestones (commands,
@@ -198,7 +204,7 @@ write_hex_byte:
     pop     rbx
     ret
 
-section .data
+section .user_data
 
 prompt:     db "> "
 prompt_len  equ $ - prompt

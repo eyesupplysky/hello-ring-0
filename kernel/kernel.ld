@@ -2,15 +2,25 @@
  * --oformat=binary), then .rodata, .data; .bss is unused (zero-init regions
  * use fixed physical addresses zeroed at runtime). ELF noise is discarded.
  *
- * M11d adds two symbols and one alignment:
- *   _etext       — page-aligned end of .text. init_page_protect uses it to
- *                  mark pages [0x100000, _etext) as RO (kernel code).
- *   _kernel_end  — end of the loaded image (after .data). init_page_protect
- *                  rounds it up to a page and marks pages [_etext, end) as
- *                  RW+NX (kernel data). The page-align before _etext costs
- *                  some padding inside the 16 KiB image but is required
- *                  for per-page protection — the unit of protection is one
- *                  PTE, so the .text/.data boundary must be page-aligned. */
+ * Layout symbols consumed by init_page_protect (in M11d's page-protect sweep):
+ *   _etext       — page-aligned end of kernel .text. Pages [0x100000, _etext)
+ *                  are stamped P only (kernel RO+exec, no US).
+ *   _kdata_end   — page-aligned end of kernel .rodata + .data. Pages
+ *                  [_etext, _kdata_end) are stamped P|RW|NX (kernel RW data,
+ *                  no US).
+ *   _user_etext  — page-aligned end of .user_text. Pages [_kdata_end,
+ *                  _user_etext) are stamped P|US (ring-3 RO+exec — the shell
+ *                  enters here via iretq).
+ *   _kernel_end  — end of .user_data, also end of the loaded image. Pages
+ *                  [_user_etext, page_align_up(_kernel_end)) are stamped
+ *                  P|RW|US|NX (ring-3 RW data — shell line buffer, paths,
+ *                  hex scratch).
+ *
+ * Splitting kernel and user halves with page-aligned boundaries is the only
+ * way the per-page PTE protections can match the source-of-truth section
+ * the byte was emitted into; otherwise a single page would straddle (e.g.)
+ * kernel .text and shell .user_text, and stamping it kernel-only would
+ * silently brick the shell. */
 
 ENTRY(_start)
 
@@ -34,6 +44,22 @@ SECTIONS {
     .data : ALIGN(16) {
         *(.data)
         *(.data.*)
+    }
+
+    . = ALIGN(0x1000);
+    _kdata_end = .;
+
+    .user_text : ALIGN(16) {
+        *(.user_text)
+        *(.user_text.*)
+    }
+
+    . = ALIGN(0x1000);
+    _user_etext = .;
+
+    .user_data : ALIGN(16) {
+        *(.user_data)
+        *(.user_data.*)
     }
 
     _kernel_end = .;

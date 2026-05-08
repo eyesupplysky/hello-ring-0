@@ -22,6 +22,7 @@ global vm_walk
 global vm_protect
 global vm_invlpg
 global vm_selftest
+global zero_frame
 global boot_pml4_phys
 
 extern frames_alloc_n
@@ -63,7 +64,9 @@ vm_invlpg:
     ret
 
 ; zero_frame(rdi=phys): write 4 KiB of zeros starting at rdi (a valid VA
-; under the identity map). Preserves rdi/rcx/rax for the caller.
+; under the identity map). Preserves rdi/rcx/rax for the caller. Used by
+; ensure_intermediate (here) and by vm_space_create (M12) when initialising
+; freshly-allocated PML4/PDPT/PD tables.
 zero_frame:
     push    rdi
     push    rcx
