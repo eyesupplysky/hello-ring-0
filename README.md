@@ -51,6 +51,14 @@ build.sh     assemble + link + compose disk.img
 run.sh       boot disk.img and verify VGA + serial output
 ```
 
+## Documentation
+
+- [Boot sequence](docs/boot-sequence.md) — BIOS to ring 3, with ASCII diagram
+- [Memory map](docs/memory-map.md) — physical address layout
+- [Syscall ABI](docs/syscall-abi.md) — register convention and reference
+- [Adding a syscall](docs/adding-a-syscall.md) / [adding a driver](docs/adding-a-driver.md) — extension recipes
+- [Intentionally minimal](docs/minimal.md) — shortcuts taken and good first extensions
+
 ## License
 
 [MIT](LICENSE).

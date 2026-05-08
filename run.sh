@@ -4,6 +4,7 @@ set -euo pipefail
 
 QEMU="${QEMU:-qemu-system-x86_64}"
 PORT="${MONITOR_PORT:-55555}"
+BOOT_WAIT="${BOOT_WAIT:-4}"
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 IMG="$ROOT/build/disk.img"
@@ -57,8 +58,9 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
     sleep 0.3
 done
 
-# Give SeaBIOS time to POST and hand off to the boot sector. ~3s in practice.
-sleep 4
+# Give SeaBIOS time to POST and hand off to the boot sector. ~3s in practice;
+# CI runners can be slower, override via BOOT_WAIT env var.
+sleep "$BOOT_WAIT"
 
 # Connect, dump the full 80x25 VGA text screen (4000 bytes), quit.
 # QEMU closes the socket on `quit`; on Windows that surfaces as a connection-abort
@@ -79,11 +81,20 @@ wait "$QEMU_PID" 2>/dev/null || true
 QEMU_PID=""
 
 # Even-indexed bytes are character codes; odd-indexed are color attributes.
+# Uses POSIX awk only (no strtonum) so this works on mawk-default systems
+# like Ubuntu CI runners as well as gawk-default ones like Git Bash.
 chars=$(echo "$output" \
     | grep -oE '0x[0-9a-fA-F]{2}' \
     | awk 'NR%2==1' \
     | awk '{
-        code = strtonum($1)
+        h = tolower($1)
+        sub(/^0x/, "", h)
+        code = 0
+        n = length(h)
+        for (i = 1; i <= n; i++) {
+            d = index("0123456789abcdef", substr(h, i, 1)) - 1
+            code = code * 16 + d
+        }
         if (code >= 32 && code < 127) printf "%c", code
         else printf "."
       }')
