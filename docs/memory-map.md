@@ -61,8 +61,45 @@ If you move things around, these defines are the load-bearing ones:
 | `IDT_ADDR` | `kernel/cpu/idt.asm` | `0x110000` |
 | `HANDLER_TABLE_ADDR` | `kernel/interrupts/isr_common.asm` | `0x111000` |
 | `KERNEL_STACK_TOP` (TSS.RSP0) | `kernel/cpu/tss.asm` | `0x90000` |
-| `KERNEL_SYSCALL_STACK_TOP` | `kernel/syscall/entry.asm` | `0x88000` |
+| `KERNEL_SYSCALL_STACK_TOP` | `kernel/process/process.asm` (boot_process initializer) | `0x88000` |
 | `USER_STACK_TOP` | `kernel/main.asm` | `0x60000` |
 
 A change to any of these tends to ripple — for instance bumping
 `KERNEL_DEST` requires a matching `kernel.ld` `.text` base.
+
+## Per-process kernel stacks (M13c)
+
+The two stack regions at `0x80000`–`0x90000` belong to the **boot/shell
+process** (pid 0). Spawned processes get their own pair of kernel stacks
+allocated from the frame pool — one frame for the syscall stack, one for
+the IRQ stack — at allocation time in `sys_spawn`. The slot in
+`process_t` stores the *top* of each stack; the *base* is `top -
+FRAME_SIZE` (4 KiB).
+
+`syscall_entry` reads the current process's `kernel_syscall_stack_top`
+through `current_process` rather than baking the literal, so a process
+mid-syscall always lands on its own stack regardless of which process is
+"current" at any given moment. `TSS.RSP0` is patched to the current
+process's `kernel_irq_stack_top` on every `context_switch` via
+`tss_set_rsp0`, so a ring 3 → 0 IRQ also lands on the right stack.
+
+When a spawned process exits, its two kernel stack frames are returned
+to the frame pool by `reap_process`. The boot process never enters the
+reaper — it's a static `.data` singleton, and `sys_exit` refuses to
+unlink pid 0.
+
+## User-VA range
+
+`[0x800000, 0x1000000)` — 8 MiB / 2048 pages — is reserved for ring-3
+mappings outside the boot identity map. `sys_mmap` carves contiguous
+virt runs here in the **current** vm_space, backed by scattered phys
+frames. `sys_spawn` also maps the child's ring-3 user stack at virt
+`0x800000` directly into the *child's* vm_space (bypassing the
+`user_va_bitmap`, since the mapping is this-space-only). Multiple
+processes can hold mappings at the same virt in this range — they live
+in different vm_spaces and don't alias.
+
+The bitmap that tracks which user-VA pages are mapped lives at
+`user_va_bitmap` in `kernel/mm/user_vm.asm`. It's currently global, not
+per-vm_space — see [`processes.md`](processes.md) for the constraint
+this implies for any future workload with multiple `sys_mmap` consumers.

@@ -15,6 +15,8 @@
 
 global shell_main
 
+extern child_main
+
 %define SYS_READ        0
 %define SYS_WRITE       1
 %define SYS_EXIT        2
@@ -22,6 +24,9 @@ global shell_main
 %define SYS_CLOSE       4
 %define SYS_MMAP        5
 %define SYS_MUNMAP      6
+%define SYS_YIELD       7
+%define SYS_SPAWN       8
+%define SYS_GETPID      9
 %define FD_STDIN        0
 %define FD_STDOUT       1
 %define LINE_BUF_SIZE   128
@@ -34,6 +39,9 @@ section .user_text
 shell_main:
     call    fd_selftest
     call    mm_selftest
+    call    process_selftest
+    call    yield_selftest
+    call    spawn_selftest
     lea     rdi, [rel prompt]
     mov     rsi, prompt_len
     call    write_str
@@ -173,6 +181,102 @@ mm_selftest:
 .done:
     ret
 
+; spawn_selftest: M13c — sys_spawn(child_main), then sys_yield. The child
+; runs in its own vm_space, writes "C OK\n" via sys_write, calls sys_exit;
+; sys_exit unlinks the child and switches back here, where sys_yield's
+; reaper frees the child's resources. We then print "S OK\n" — the parent
+; survived the round-trip and the cooperative ready list collapsed back to
+; a singleton.
+spawn_selftest:
+    mov     rax, SYS_SPAWN
+    lea     rdi, [rel child_main]
+    syscall
+    test    rax, rax
+    js      .done                   ; spawn failed — bail silently (CI catches missing string)
+
+    mov     rax, SYS_YIELD
+    syscall
+
+    lea     rdi, [rel s_ok_msg]
+    mov     rsi, s_ok_msg_len
+    call    write_str
+.done:
+    ret
+
+; yield_selftest: M13b — sys_yield to ourselves and verify SystemV
+; callee-saved registers (RBX, RBP, R12-R15) survive the round-trip through
+; context_switch. If any sentinel reads back wrong, "Y OK" is suppressed and
+; CI catches the missing string. The test exercises the full chain
+; (syscall -> syscall_entry stack swap -> sys_yield -> context_switch save +
+; restore -> sysretq) with one process, so any save-area mismatch surfaces
+; here before M13c stresses the same code path with a real second process.
+yield_selftest:
+    push    rbx
+    push    rbp
+    push    r12
+    push    r13
+    push    r14
+    push    r15
+
+    mov     rbx, 0x1111111122222222
+    mov     rbp, 0x3333333344444444
+    mov     r12, 0x5555555566666666
+    mov     r13, 0x7777777788888888
+    mov     r14, 0x99999999AAAAAAAA
+    mov     r15, 0xBBBBBBBBCCCCCCCC
+
+    mov     rax, SYS_YIELD
+    syscall
+
+    mov     rax, 0x1111111122222222
+    cmp     rbx, rax
+    jne     .done
+    mov     rax, 0x3333333344444444
+    cmp     rbp, rax
+    jne     .done
+    mov     rax, 0x5555555566666666
+    cmp     r12, rax
+    jne     .done
+    mov     rax, 0x7777777788888888
+    cmp     r13, rax
+    jne     .done
+    mov     rax, 0x99999999AAAAAAAA
+    cmp     r14, rax
+    jne     .done
+    mov     rax, 0xBBBBBBBBCCCCCCCC
+    cmp     r15, rax
+    jne     .done
+
+    lea     rdi, [rel y_ok_msg]
+    mov     rsi, y_ok_msg_len
+    call    write_str
+.done:
+    pop     r15
+    pop     r14
+    pop     r13
+    pop     r12
+    pop     rbp
+    pop     rbx
+    ret
+
+; process_selftest: sys_getpid, write "P=" + pid as 2 hex digits + "\n".
+; M13a: only the boot process exists, so the expected output is "P=00".
+; CI asserts that string on VGA + serial.
+process_selftest:
+    mov     rax, SYS_GETPID
+    syscall
+    mov     [rel pid_byte], al
+
+    lea     rdi, [rel pid_prefix]
+    mov     rsi, 2
+    call    write_str
+    movzx   rdi, byte [rel pid_byte]
+    call    write_hex_byte
+    lea     rdi, [rel st_newline]
+    mov     rsi, 1
+    call    write_str
+    ret
+
 ; write_hex_byte(rdi=byte): writes 2 ASCII hex chars via sys_write to stdout.
 write_hex_byte:
     push    rbx
@@ -226,3 +330,12 @@ st_hex:      db 0, 0
 mm_prefix:   db "M="
 mm_addr:     dq 0
 mm_byte:     db 0
+
+pid_prefix:  db "P="
+pid_byte:    db 0
+
+y_ok_msg:    db "Y OK", 0x0A
+y_ok_msg_len equ $ - y_ok_msg
+
+s_ok_msg:    db "S OK", 0x0A
+s_ok_msg_len equ $ - s_ok_msg

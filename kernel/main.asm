@@ -26,6 +26,7 @@ extern um_selftest
 extern init_nx
 extern init_page_protect
 extern pp_selftest
+extern init_process
 extern vga_init
 extern vga_puts_at
 extern serial_init
@@ -64,6 +65,7 @@ _start:
     call    init_nx
     call    init_page_protect
     call    pp_selftest
+    call    init_process
 
     lea     rdi, [rel msg_k_ok]
     mov     rsi, 14

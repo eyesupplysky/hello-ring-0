@@ -5,6 +5,7 @@
 [BITS 64]
 
 global init_tss
+global tss_set_rsp0
 
 extern gdt_tss_descriptor
 
@@ -42,4 +43,18 @@ init_tss:
 
     mov     ax, TSS_SELECTOR
     ltr     ax
+    ret
+
+; tss_set_rsp0(rdi=new_rsp): patch the TSS's RSP0 slot in place. context_switch
+; calls this on every per-process kernel-irq-stack swap (M13b) so the next
+; ring-3 -> ring-0 transition lands on the new owner's irq stack. The CPU
+; reads RSP0 lazily on each ring-3 -> 0 entry, so a bare store is sufficient
+; — no LTR re-issue or TLB flush.
+;            any ring-3 process can be scheduled
+;            reads whatever RSP0 it finds at that moment — a torn 8-byte write
+;            with IF=1 would be catastrophic on a CPU that interrupted us
+;            mid-store, but we run with FMASK clearing IF on syscall entry so
+;            this is moot in practice)
+tss_set_rsp0:
+    mov     [rel tss + 4], rdi
     ret

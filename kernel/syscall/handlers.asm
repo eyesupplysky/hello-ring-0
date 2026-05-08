@@ -1,11 +1,14 @@
 ; Syscall handlers and the dispatch table. Numbers:
 ;   0 = sys_read    (dispatches via fd_read_fns[fd])
 ;   1 = sys_write   (dispatches via fd_write_fns[fd])
-;   2 = sys_exit
+;   2 = sys_exit    (in process/process.asm — M13c rewrote to ready-list-aware)
 ;   3 = sys_open    (in fd.asm)
 ;   4 = sys_close   (in fd.asm)
 ;   5 = sys_mmap    (in mm/user_vm.asm — M11c real virt mapping)
 ;   6 = sys_munmap  (in mm/user_vm.asm — M11c real virt unmapping)
+;   7 = sys_yield   (in process/process.asm — M13b)
+;   8 = sys_spawn   (in process/process.asm — M13c)
+;   9 = sys_getpid  (in process/process.asm — M13a)
 ;
 ; sys_read and sys_write are thin dispatchers: they validate fd, look up the
 ; per-fd function pointer in the fd table, shift the args (rdi=buf, rsi=count),
@@ -19,7 +22,6 @@ global syscall_table
 global syscall_table_size
 global sys_read
 global sys_write
-global sys_exit
 global kbd_read
 global console_write
 
@@ -37,6 +39,10 @@ extern sys_open
 extern sys_close
 extern sys_mmap
 extern sys_munmap
+extern sys_getpid
+extern sys_yield
+extern sys_spawn
+extern sys_exit
 
 ; Must match the table size in fd.asm. Kept as a literal here because NASM
 ; %define symbols don't cross object-file boundaries.
@@ -52,8 +58,11 @@ syscall_table:
     dq sys_close                    ; 4
     dq sys_mmap                     ; 5
     dq sys_munmap                   ; 6
+    dq sys_yield                    ; 7
+    dq sys_spawn                    ; 8
+    dq sys_getpid                   ; 9
 
-syscall_table_size: dq 7
+syscall_table_size: dq 10
 
 ; PS/2 Set 1 scancode -> ASCII (unshifted, no caps lock). Make codes only;
 ; break codes (high bit set) are filtered upstream in sys_read. Index by
@@ -295,11 +304,3 @@ console_write:
     pop     r12
     pop     rbx
     ret
-
-; sys_exit(int code) — never returns. Re-enables interrupts so the timer and
-; keyboard keep running (system stays diagnosable), then halts the CPU.
-sys_exit:
-    sti
-.halt:
-    hlt
-    jmp     .halt

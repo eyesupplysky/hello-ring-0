@@ -58,6 +58,8 @@ KERNEL_SRCS=(
     "kernel/mm/vm_space.asm"
     "kernel/mm/user_vm.asm"
     "kernel/mm/page_protect.asm"
+    "kernel/process/process.asm"
+    "kernel/shell/child.asm"
     "kernel/shell/main.asm"
 )
 
@@ -76,15 +78,15 @@ echo "[link] kernel.bin via kernel.ld"
     -T "$ROOT/kernel/kernel.ld" \
     -o "$BUILD/kernel.bin" \
     "${KERNEL_OBJS[@]}"
-assert_size_le "$BUILD/kernel.bin" 24576
+assert_size_le "$BUILD/kernel.bin" 28672
 
-echo "[pad] kernel.bin -> kernel.padded (24 KB)"
+echo "[pad] kernel.bin -> kernel.padded (28 KB)"
 cp "$BUILD/kernel.bin" "$BUILD/kernel.padded"
-truncate -s 24576 "$BUILD/kernel.padded"
-assert_size_eq "$BUILD/kernel.padded" 24576
+truncate -s 28672 "$BUILD/kernel.padded"
+assert_size_eq "$BUILD/kernel.padded" 28672
 
 echo "[compose] disk.img"
 cat "$BUILD/stage1.bin" "$BUILD/stage2.bin" "$BUILD/kernel.padded" > "$BUILD/disk.img"
-assert_size_eq "$BUILD/disk.img" $((512 + 4096 + 24576))
+assert_size_eq "$BUILD/disk.img" $((512 + 4096 + 28672))
 
-echo "[ok] disk.img = $(wc -c < "$BUILD/disk.img") bytes (57 sectors)"
+echo "[ok] disk.img = $(wc -c < "$BUILD/disk.img") bytes (65 sectors)"

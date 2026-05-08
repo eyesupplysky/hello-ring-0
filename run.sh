@@ -156,6 +156,10 @@ ok=true
 [[ "$chars" == *"VS OK"* ]]  || { echo "[fail] missing 'VS OK' (M11b vm_space selftest failed: vm_space_create/switch/destroy or CR3 swap)" >&2; ok=false; }
 [[ "$chars" == *"UM OK"* ]]  || { echo "[fail] missing 'UM OK' (M11c user_vm selftest failed: sys_mmap/sys_munmap real virt mapping)" >&2; ok=false; }
 [[ "$chars" == *"PP OK"* ]]  || { echo "[fail] missing 'PP OK' (M11d page protect selftest failed: EFER.NXE, vm_protect, kernel-text RO)" >&2; ok=false; }
+[[ "$chars" == *"P=00"* ]]   || { echo "[fail] missing 'P=00' (M13a sys_getpid via current_process indirection failed)" >&2; ok=false; }
+[[ "$chars" == *"Y OK"* ]]   || { echo "[fail] missing 'Y OK' (M13b sys_yield/context_switch round-trip failed: callee-saved corruption or CR3 swap broken)" >&2; ok=false; }
+[[ "$chars" == *"C OK"* ]]   || { echo "[fail] missing 'C OK' (M13c child process didn't run in its own vm_space — sys_spawn / iretq frame / .user2_text broken)" >&2; ok=false; }
+[[ "$chars" == *"S OK"* ]]   || { echo "[fail] missing 'S OK' (M13c parent didn't survive child sys_exit — reap path or ready-list unlink broken)" >&2; ok=false; }
 
 # Serial log captures the kernel's serial_puts output.
 serial_data=""
@@ -172,6 +176,10 @@ echo "Serial log: $(printf '%s' "$serial_data" | tr -d '\r')"
 [[ "$serial_data" == *"VS OK"* ]] || { echo "[fail] missing 'VS OK' in serial log (M11b vm_space selftest didn't reach serial)" >&2; ok=false; }
 [[ "$serial_data" == *"UM OK"* ]] || { echo "[fail] missing 'UM OK' in serial log (M11c user_vm selftest didn't reach serial)" >&2; ok=false; }
 [[ "$serial_data" == *"PP OK"* ]] || { echo "[fail] missing 'PP OK' in serial log (M11d page protect selftest didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"P=00"* ]] || { echo "[fail] missing 'P=00' in serial log (M13a sys_getpid didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"Y OK"* ]] || { echo "[fail] missing 'Y OK' in serial log (M13b sys_yield round-trip didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"C OK"* ]] || { echo "[fail] missing 'C OK' in serial log (M13c spawned child didn't reach serial)" >&2; ok=false; }
+[[ "$serial_data" == *"S OK"* ]] || { echo "[fail] missing 'S OK' in serial log (M13c parent didn't reach serial after child exit)" >&2; ok=false; }
 
 if $ok; then
     echo "[ok] shell echo confirmed — sys_read + sys_write round-trip in ring 3"

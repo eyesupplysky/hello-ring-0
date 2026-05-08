@@ -41,9 +41,16 @@ to copy `R10` into `RCX` before the call; current handlers all stop at
 
 | # | Name | Args | Returns |
 |---|---|---|---|
-| 0 | `sys_read`  | `int fd, void *buf, size_t count`  | bytes read (always ≤ 1), 0 if `count == 0`, –1 if `fd != 0` |
-| 1 | `sys_write` | `int fd, const void *buf, size_t count` | bytes written (= `count`), –1 if `fd ∉ {1, 2}` |
-| 2 | `sys_exit`  | `int code` | does not return |
+| 0 | `sys_read`   | `int fd, void *buf, size_t count`  | bytes read (always ≤ 1), 0 if `count == 0`, –1 on bad fd |
+| 1 | `sys_write`  | `int fd, const void *buf, size_t count` | bytes written, –1 on bad fd |
+| 2 | `sys_exit`   | `int code` | does not return |
+| 3 | `sys_open`   | `const char *path, int flags` | new fd, or –1 |
+| 4 | `sys_close`  | `int fd` | 0, or –1 if `fd ∈ {0, 1, 2}` or unallocated |
+| 5 | `sys_mmap`   | `size_t pages` | virt of a `pages`-page contiguous run in `[0x800000, 0x1000000)`, or –1 |
+| 6 | `sys_munmap` | `void *virt, size_t pages` | 0, or –1 on bad alignment / out-of-range |
+| 7 | `sys_yield`  | — | 0 (always) |
+| 8 | `sys_spawn`  | `void *entry_addr` | new pid (≥ 1), or –1 |
+| 9 | `sys_getpid` | — | current pid |
 
 ### `sys_read`
 
@@ -66,9 +73,44 @@ sinks; there's currently no separation between them.
 
 ### `sys_exit`
 
-Re-enables interrupts and halts the CPU. Timer and keyboard handlers
-keep firing — the system stays diagnosable in QEMU even after the
-process "exits."
+Pid 0 (the boot/shell process) re-enables interrupts and halts the CPU —
+timer and keyboard handlers keep firing, system stays diagnosable. Any
+other pid unlinks itself from the ready ring, hands its `process_t` to
+`pending_zombie`, and `context_switch`es to its successor; the next
+`sys_yield` after the switch reaps the zombie's `vm_space`, two kernel
+stack frames, and `process_t`. See [`processes.md`](processes.md) for the
+lifecycle.
+
+### `sys_open` / `sys_close`
+
+`sys_open` recognizes `/dev/null` and `/dev/zero`; anything else returns
+–1. `flags` is currently ignored. `sys_close` refuses fd 0/1/2 (closing
+stdin/stdout/stderr would brick the shell with no way to reopen them).
+The fd table is 16 slots, defined in `kernel/syscall/fd.asm`.
+
+### `sys_mmap` / `sys_munmap`
+
+`sys_mmap(pages)` allocates a `pages`-page contiguous virt run in
+`[0x800000, 0x1000000)` (8 MiB / 2048 pages of user-VA window) and backs
+each page with a freshly allocated physical frame, mapped `P|RW|US` in
+the current vm_space. Phys frames are scattered; only the virt range is
+contiguous. Atomic: on partial-map failure, every page mapped before the
+failing one is `vm_unmap_4k`'d, every frame freed, and the user-VA bitmap
+range cleared — the caller observes –1 and no kernel state changes.
+
+`sys_munmap(virt, pages)` walks the page-table tree to recover each
+page's phys, frees the frame, unmaps the leaf, and clears the bitmap.
+Out-of-range or misaligned addresses return –1; pages that were already
+unmapped are silently skipped (the bitmap clear still happens).
+
+### `sys_yield` / `sys_spawn` / `sys_getpid`
+
+Process-control syscalls — see [`processes.md`](processes.md) for the
+cooperative scheduling model and lifecycle. Briefly: `sys_yield` switches
+to `current_process->next_proc` (yield-to-self when the ring has one
+node); `sys_spawn(entry_addr)` allocates a fresh process with its own
+vm_space, kernel stacks, and user stack at virt `0x800000`, returning
+the new pid; `sys_getpid` returns the current pid.
 
 ## Calling example
 

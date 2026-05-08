@@ -54,12 +54,26 @@ SECTIONS {
         *(.user_text.*)
     }
 
+    /* M13c: spawned-process binaries land in `.user2_text` so they share the
+     * same US|exec protection range as the shell's `.user_text`. Stays
+     * inside [_kdata_end, _user_etext) — init_page_protect's existing sweep
+     * stamps both in one pass. */
+    .user2_text : ALIGN(16) {
+        *(.user2_text)
+        *(.user2_text.*)
+    }
+
     . = ALIGN(0x1000);
     _user_etext = .;
 
     .user_data : ALIGN(16) {
         *(.user_data)
         *(.user_data.*)
+    }
+
+    .user2_data : ALIGN(16) {
+        *(.user2_data)
+        *(.user2_data.*)
     }
 
     _kernel_end = .;
