@@ -2,7 +2,7 @@
 
 x86-64 kernel in NASM, from a 512-byte BIOS sector to ring-3 cooperative multiprocess. Assembly.
 
-No GRUB, no Multiboot, no C, no Rust. The first of four portfolio projects, designed to be readable end-to-end and usable as a starting base for your own kernel work.
+Usable as a starting base for your own kernel work.
 
 ## Status
 
